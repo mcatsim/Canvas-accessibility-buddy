@@ -46,4 +46,4 @@ async def health():
 def main():
     """Entry point for `canvas-a11y-web` script."""
     import uvicorn
-    uvicorn.run("canvas_a11y.web.app:app", host="0.0.0.0", port=8080, reload=False)
+    uvicorn.run("canvas_a11y.web.app:app", host="0.0.0.0", port=8080, reload=False)  # nosec B104 — intentional for Docker

@@ -1,10 +1,10 @@
-"""E2E test fixtures — spins up the FastAPI app for integration testing."""
+"""E2E test fixtures — uses httpx ASGITransport for fast, reliable testing."""
 import asyncio
-from contextlib import asynccontextmanager
 
 import pytest
 import httpx
-from uvicorn import Config, Server
+
+from canvas_a11y.web.app import app
 
 
 @pytest.fixture(scope="session")
@@ -15,47 +15,34 @@ def event_loop():
 
 
 @pytest.fixture(scope="session")
-async def app_server(event_loop):
-    """Start the real FastAPI app on a random port for E2E testing."""
-    from canvas_a11y.web.app import app
+def app_server():
+    """Return the base URL for WebSocket tests using a real server."""
+    # For HTTP tests we use ASGITransport (no real server needed).
+    # For WebSocket tests we spin up a real server.
+    import threading
+    import uvicorn
 
-    config = Config(app=app, host="127.0.0.1", port=0, log_level="warning")
-    server = Server(config)
+    config = uvicorn.Config(app=app, host="127.0.0.1", port=18923, log_level="warning")
+    server = uvicorn.Server(config)
 
-    # Let uvicorn pick an available port
-    task = event_loop.create_task(server.serve())
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
 
-    # Wait for server to start
+    # Wait for it to be ready
+    import time
     for _ in range(50):
-        await asyncio.sleep(0.1)
+        time.sleep(0.1)
         if server.started:
             break
 
-    # Get the actual bound port
-    sockets = server.servers
-    port = None
-    for s in sockets:
-        for sock in s.sockets:
-            addr = sock.getsockname()
-            if addr:
-                port = addr[1]
-                break
-        if port:
-            break
-
-    if not port:
-        # Fallback: try the config port
-        port = config.port
-
-    base_url = f"http://127.0.0.1:{port}"
-    yield base_url
-
+    yield "http://127.0.0.1:18923"
     server.should_exit = True
-    await task
+    thread.join(timeout=3)
 
 
 @pytest.fixture
-async def client(app_server):
-    """Async HTTP client pointed at the running E2E server."""
-    async with httpx.AsyncClient(base_url=app_server, timeout=30.0) as c:
+async def client():
+    """Async HTTP client using ASGI transport — no real server needed."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=30.0) as c:
         yield c
