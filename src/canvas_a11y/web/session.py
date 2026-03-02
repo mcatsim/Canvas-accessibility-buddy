@@ -36,6 +36,11 @@ class SessionState:
     canvas_api_token: str = ""
     user_name: str = ""
     validated: bool = False
+    # AI configuration
+    ai_provider: str = ""
+    ai_api_key: str = ""
+    ai_model: str = ""
+    ai_validated: bool = False
     jobs: dict[str, AuditJob] = field(default_factory=dict)
 
 

@@ -1,7 +1,19 @@
 """Pydantic data models for Canvas LMS accessibility audit results."""
+from __future__ import annotations
+
+import sys
 from datetime import datetime
-from enum import StrEnum
 from pathlib import Path
+from typing import List, Optional, Union
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Backport of StrEnum for Python < 3.11."""
+        pass
 
 from pydantic import BaseModel, computed_field
 
@@ -45,10 +57,10 @@ class AccessibilityIssue(BaseModel):
     wcag_criterion: str
     """WCAG success criterion reference, e.g. '1.1.1'."""
 
-    element_html: str | None = None
+    element_html: Optional[str] = None
     """Snippet of the offending HTML element, if applicable."""
 
-    line_number: int | None = None
+    line_number: Optional[int] = None
     """Approximate line number in the source HTML where the issue occurs."""
 
     auto_fixable: bool = False
@@ -60,7 +72,7 @@ class AccessibilityIssue(BaseModel):
     fixed: bool = False
     """Whether this issue has been remediated."""
 
-    fix_description: str | None = None
+    fix_description: Optional[str] = None
     """Description of the fix that was applied, if any."""
 
 
@@ -79,13 +91,13 @@ class ContentItem(BaseModel):
     url: str
     """Canvas URL for the content item."""
 
-    html_content: str | None = None
+    html_content: Optional[str] = None
     """Raw HTML body of the content, fetched from the Canvas API."""
 
-    issues: list[AccessibilityIssue] = []
+    issues: List[AccessibilityIssue] = []
     """Accessibility issues found in this content item."""
 
-    score: float | None = None
+    score: Optional[float] = None
     """Accessibility score from 0-100; None if not yet scored."""
 
 
@@ -110,16 +122,16 @@ class FileItem(BaseModel):
     url: str
     """Canvas download URL for the file."""
 
-    issues: list[AccessibilityIssue] = []
+    issues: List[AccessibilityIssue] = []
     """Accessibility issues found in this file."""
 
-    score: float | None = None
+    score: Optional[float] = None
     """Accessibility score from 0-100; None if not yet scored."""
 
-    local_path: Path | None = None
+    local_path: Optional[Path] = None
     """Path to the locally downloaded copy of the file."""
 
-    remediated_path: Path | None = None
+    remediated_path: Optional[Path] = None
     """Path to the remediated version of the file, if generated."""
 
 
@@ -135,14 +147,33 @@ class CourseAuditResult(BaseModel):
     audit_timestamp: datetime
     """When the audit was performed."""
 
-    content_items: list[ContentItem] = []
+    content_items: List[ContentItem] = []
     """All HTML content items audited in this course."""
 
-    file_items: list[FileItem] = []
+    file_items: List[FileItem] = []
     """All files audited in this course."""
 
-    overall_score: float | None = None
+    overall_score: Optional[float] = None
     """Weighted overall accessibility score from 0-100; None if not yet computed."""
+
+    # Course metadata (populated during audit)
+    course_code: str = ""
+    """Canvas course code, e.g. 'CS101-F25'."""
+
+    term_name: str = ""
+    """Academic term name, e.g. 'Fall 2025'."""
+
+    instructor_name: str = ""
+    """Primary instructor display name."""
+
+    instructor_email: str = ""
+    """Primary instructor email address."""
+
+    enrollment_count: int = 0
+    """Total number of enrolled students."""
+
+    department: str = ""
+    """Department or account name from Canvas."""
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -202,7 +233,7 @@ class CourseAuditResult(BaseModel):
 
         Items without a score (None) are excluded from both counts.
         """
-        all_items: list[ContentItem | FileItem] = [
+        all_items: List[Union[ContentItem, FileItem]] = [
             *self.content_items,
             *self.file_items,
         ]

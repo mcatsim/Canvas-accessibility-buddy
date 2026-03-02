@@ -1,5 +1,9 @@
 """Fetch all content types from a Canvas course."""
+from __future__ import annotations
+
 import asyncio
+from typing import Any, Dict, List, Optional, Tuple
+
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from canvas_a11y.canvas.client import CanvasClient
@@ -50,6 +54,58 @@ class ContentFetcher:
                 progress.update(task, completed=True)
 
         return content_items, file_items
+
+    async def fetch_course_metadata(self) -> Dict[str, Any]:
+        """Fetch extended course metadata from Canvas API.
+
+        Calls: GET /courses/{id}?include[]=term&include[]=total_students&include[]=teachers
+
+        Returns a dict with keys: course_code, term_name, instructor_name,
+        instructor_email, enrollment_count, department (account_id fallback).
+        All values default to "" or 0 if not available.
+        """
+        defaults: Dict[str, Any] = {
+            "course_code": "",
+            "term_name": "",
+            "instructor_name": "",
+            "instructor_email": "",
+            "enrollment_count": 0,
+            "department": "",
+        }
+        try:
+            course = await self.client.get(
+                self.base,
+                params={
+                    "include[]": ["term", "total_students", "teachers"],
+                },
+            )
+
+            result: Dict[str, Any] = {}
+            result["course_code"] = course.get("course_code", "")
+            result["enrollment_count"] = course.get("total_students", 0) or 0
+
+            # Term info
+            term = course.get("term")
+            result["term_name"] = term.get("name", "") if isinstance(term, dict) else ""
+
+            # Teacher info (first teacher in list)
+            teachers = course.get("teachers", [])
+            if teachers and isinstance(teachers, list):
+                first_teacher = teachers[0]
+                result["instructor_name"] = first_teacher.get("display_name", "")
+                result["instructor_email"] = first_teacher.get("email", "")
+            else:
+                result["instructor_name"] = ""
+                result["instructor_email"] = ""
+
+            # Department — account_name is not directly available without
+            # a separate API call, so fall back to account_id as a string.
+            account_id = course.get("account_id", "")
+            result["department"] = str(account_id) if account_id else ""
+
+            return result
+        except Exception:
+            return defaults
 
     async def fetch_pages(self) -> list[ContentItem]:
         pages = await self.client.get_paginated(f"{self.base}/pages")

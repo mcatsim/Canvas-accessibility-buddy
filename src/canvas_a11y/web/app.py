@@ -1,4 +1,6 @@
 """FastAPI application — serves API + static files."""
+from __future__ import annotations
+
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,13 +13,14 @@ from canvas_a11y.web.api.audit_routes import router as audit_router
 from canvas_a11y.web.api.fix_routes import router as fix_router
 from canvas_a11y.web.api.report_routes import router as report_router
 from canvas_a11y.web.api.ws import router as ws_router
+from canvas_a11y.web.api.ai_routes import router as ai_router
 
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(
-    title="Canvas A11Y Audit",
-    description="WCAG 2.1 AA accessibility auditor for Canvas LMS",
-    version="0.1.0",
+    title="Accessiflow",
+    description="WCAG 2.1 AA, Section 508, and VPAT accessibility auditor for Canvas LMS",
+    version="1.0.0",
 )
 
 # API routes
@@ -27,6 +30,7 @@ app.include_router(audit_router, prefix="/api")
 app.include_router(fix_router, prefix="/api")
 app.include_router(report_router, prefix="/api")
 app.include_router(ws_router)
+app.include_router(ai_router, prefix="/api")
 
 # Static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

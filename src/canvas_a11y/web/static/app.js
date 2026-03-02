@@ -37,6 +37,18 @@ function auditApp() {
     fixing: false,
     fixResult: null,
 
+    // AI config
+    aiProvider: '',
+    aiApiKey: '',
+    aiModel: '',
+    aiValidating: false,
+    aiValidated: false,
+    aiError: '',
+    aiSuggestions: {},
+
+    // Course metadata
+    courseMeta: null,
+
     async init() {
       // Check if already configured (page reload)
       try {
@@ -78,6 +90,34 @@ function auditApp() {
         this.configError = 'Network error: ' + e.message;
       } finally {
         this.connecting = false;
+      }
+    },
+
+    // ─── AI Validation ──────────────────────────────────────
+    async validateAI() {
+      this.aiValidating = true;
+      this.aiError = '';
+      try {
+        const resp = await fetch('/api/ai/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: this.aiProvider,
+            api_key: this.aiApiKey,
+            model: this.aiModel,
+          }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          this.aiValidated = true;
+          this.aiModel = data.model;
+        } else {
+          this.aiError = data.error || 'Validation failed';
+        }
+      } catch (e) {
+        this.aiError = 'Network error: ' + e.message;
+      } finally {
+        this.aiValidating = false;
       }
     },
 
@@ -219,6 +259,24 @@ function auditApp() {
       return 'sc-fail';
     },
 
+    getStandards(issue) {
+      // Map check IDs to their primary standards references
+      const map = {
+        'alt-text-missing': '508: 1194.22(a)',
+        'alt-text-nondescriptive': '508: 1194.22(a)',
+        'heading-hierarchy': 'WCAG 2.4.6',
+        'table-missing-headers': '508: 1194.22(d)',
+        'table-header-missing-scope': '508: 1194.22(g)',
+        'media-missing-captions': '508: 1194.22(b)',
+        'form-input-missing-label': '508: 1194.22(n)',
+        'color-contrast': '508: 1194.31(b)',
+        'pdf-not-tagged': '508: E205.4',
+        'pdf-missing-title': '508: E205.4',
+        'pdf-missing-language': '508: E205.4',
+      };
+      return map[issue.check_id] || '';
+    },
+
     sortedContent() {
       if (!this.result?.content_items) return [];
       return [...this.result.content_items].sort((a, b) => (a.score ?? 999) - (b.score ?? 999));
@@ -278,6 +336,31 @@ function auditApp() {
       }
     },
 
+    // ─── AI Suggestion ─────────────────────────────────────
+    async getAISuggestion(issueIdx) {
+      const issues = this.allIssues();
+      if (issueIdx >= issues.length) return;
+      issues[issueIdx]._aiLoading = true;
+      try {
+        const resp = await fetch(`/api/ai/suggest/${this.jobId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ issue_index: issueIdx }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+          alert('AI error: ' + data.error);
+        } else {
+          this.aiSuggestions[issueIdx] = data;
+          alert('AI Suggestion:\n\n' + data.explanation);
+        }
+      } catch (e) {
+        alert('Failed to get AI suggestion: ' + e.message);
+      } finally {
+        issues[issueIdx]._aiLoading = false;
+      }
+    },
+
     // ─── Step 3: Log formatting ──────────────────────────────
     formatLogEntry(entry) {
       switch (entry.type) {
@@ -302,6 +385,8 @@ function auditApp() {
       this.result = null;
       this.fixResult = null;
       this.selectedFixes = [];
+      this.courseMeta = null;
+      this.aiSuggestions = {};
       if (this.ws) {
         this.ws.close();
         this.ws = null;

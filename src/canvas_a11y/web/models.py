@@ -1,6 +1,8 @@
 """Pydantic schemas for web API requests and responses."""
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -45,3 +47,29 @@ class FixResponse(BaseModel):
     fixed_count: int
     new_score: float | None = None
     errors: list[str] = []
+
+
+class AIConfigRequest(BaseModel):
+    provider: str
+    api_key: str
+    model: str = ""
+
+
+class AIConfigStatus(BaseModel):
+    configured: bool = False
+    provider: str = ""
+    model: str = ""
+    validated: bool = False
+
+
+class AISuggestionRequest(BaseModel):
+    issue_index: int = 0
+
+
+class AISuggestionResponse(BaseModel):
+    check_id: str = ""
+    explanation: str = ""
+    suggested_fix: str = ""
+    provider: str = ""
+    model: str = ""
+    error: Optional[str] = None

@@ -12,7 +12,7 @@ COPY pyproject.toml .
 COPY src/ src/
 
 # Install with web extras
-RUN pip install --no-cache-dir ".[web]"
+RUN pip install --no-cache-dir ".[web,ai]"
 
 # Non-root user
 RUN useradd -m appuser && chown -R appuser:appuser /app

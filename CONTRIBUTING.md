@@ -1,71 +1,99 @@
-# Contributing to Canvas Accessibility Buddy
+# Contributing to Accessiflow
 
-Thank you for your interest in improving accessibility in education!
+Thank you for your interest in making Canvas LMS more accessible! Here's how to get involved.
 
-## Contributor License Agreement
+## Development Setup
 
-**Before your first contribution can be merged**, you must agree to our
-[Contributor License Agreement (CLA)](CLA.md).
+```bash
+# Fork and clone
+git clone https://github.com/YOUR-USERNAME/Canvas-accessibility-buddy.git
+cd Canvas-accessibility-buddy
 
-By submitting a pull request, your Git commit signature (name + email) serves
-as your electronic signature of the CLA. No separate form is required.
+# Create virtual environment (Python 3.12+ required)
+python3.12 -m venv .venv
+source .venv/bin/activate
 
-If contributing on behalf of an organization, please have an authorized
-representative email matt@catsimanes.com.
+# Install all dependencies
+pip install -e ".[web,ai,dev,e2e,security]"
 
-## Getting Started
+# Run tests to verify setup
+pytest tests/ -v
+```
+
+## Project Structure
+
+```
+src/canvas_a11y/
+├── ai/           # AI providers (litellm abstraction)
+├── canvas/       # Canvas LMS API client
+├── checks/       # Pluggable accessibility checks
+├── remediation/  # Auto-fix and AI remediation
+├── reporting/    # Report generators (HTML, VPAT, JSON)
+├── scoring/      # Weighted scoring engine
+├── standards/    # WCAG 2.1, Section 508, VPAT data
+├── utils/        # HTML/CSS parsing helpers
+└── web/          # FastAPI app + Alpine.js frontend
+```
+
+## Adding a New Accessibility Check
+
+1. **Create the check class** in `src/canvas_a11y/checks/`:
+
+```python
+from canvas_a11y.checks.base import AccessibilityCheck
+from canvas_a11y.checks.registry import register_check
+from canvas_a11y.models import Severity
+
+@register_check
+class MyNewCheck(AccessibilityCheck):
+    check_id = "my-new-check"
+    title = "My New Check"
+    description = "Description of what this checks"
+    wcag_criterion = "1.3.1"  # WCAG criterion ID
+
+    def check_html(self, html: str, url: str) -> list:
+        issues = []
+        # Your check logic here
+        return issues
+```
+
+2. **Add standards mapping** in `src/canvas_a11y/standards/mapping.py`:
+
+```python
+"my-new-check": StandardsMapping(
+    wcag_criteria=("1.3.1",),
+    section_508_provisions=("E205.4",),
+    best_practice_urls=("https://www.w3.org/WAI/tutorials/...",),
+),
+```
+
+3. **Write tests** in `tests/test_my_check.py`
+
+4. **Run the full suite**: `pytest tests/ -v`
+
+## Code Style
+
+- Python 3.12+ syntax (but use `from __future__ import annotations` in new files)
+- Type hints on all public functions
+- Docstrings on all public classes and functions
+- No external dependencies without discussion — keep the stack minimal
+
+## Pull Request Process
 
 1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/YOUR-USERNAME/Canvas-accessibility-buddy.git
-   cd Canvas-accessibility-buddy
-   ```
-3. Create a virtual environment and install dev dependencies:
-   ```bash
-   python -m venv .venv && source .venv/bin/activate
-   pip install -e ".[dev,web,e2e,security]"
-   ```
-4. Create a feature branch:
-   ```bash
-   git checkout -b feature/my-improvement
-   ```
+2. Create a feature branch (`git checkout -b feature/my-check`)
+3. Write tests first (TDD encouraged)
+4. Implement the feature
+5. Run `pytest tests/ -v` — all tests must pass
+6. Run `bandit -r src/` — no security issues
+7. Submit a PR with a clear description
 
-## Running Tests
+## Reporting Issues
 
-```bash
-# Unit tests (264 existing)
-pytest tests/ --ignore=tests/e2e -v
-
-# E2E tests (web GUI)
-pytest tests/e2e/ -v
-
-# Security scan (SAST)
-bandit -r src/ -c pyproject.toml
-pip-audit
-```
-
-## Docker
-
-```bash
-docker compose up --build
-# Open http://localhost:8080
-```
-
-## Pull Request Guidelines
-
-- Keep PRs focused — one feature or fix per PR
-- Add tests for new functionality
-- Ensure all existing tests pass
-- Follow existing code style
-- Write clear commit messages
-
-## Trademark
-
-See [TRADEMARKS.md](TRADEMARKS.md) for our trademark policy. If you fork this
-project, you must use a different name.
+- Use GitHub Issues for bug reports and feature requests
+- Include Canvas LMS version, Python version, and browser (for web GUI issues)
+- For accessibility issues in Accessiflow itself, please file an issue — we eat our own dog food
 
 ## License
 
-All contributions are licensed under AGPL-3.0 as described in [LICENSE](LICENSE)
-and the [CLA](CLA.md).
+By contributing, you agree that your contributions will be licensed under the AGPL-3.0 license.

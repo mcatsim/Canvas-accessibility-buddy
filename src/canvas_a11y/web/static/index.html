@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canvas A11Y Audit</title>
+    <title>Accessiflow — Canvas Accessibility Auditor</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
         /* ── Base ──────────────────────────────────────────────── */
         :root {
-            --pass: #16a34a; --pass-bg: #dcfce7;
-            --warn: #ca8a04; --warn-bg: #fef9c3;
+            --pass: #0d7a32; --pass-bg: #dcfce7;
+            --warn: #7c5a02; --warn-bg: #fef9c3;
             --fail: #dc2626; --fail-bg: #fee2e2;
             --primary: #2563eb;
             --bg: #f5f6fa;
             --card: #fff;
             --text: #1a1a2e;
-            --muted: #64748b;
+            --muted: #596678;
             --border: #e2e8f0;
         }
         body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -59,7 +59,7 @@
         }
         .btn-primary { background: var(--primary); color: #fff; }
         .btn-primary:hover { background: #1d4ed8; }
-        .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+        .btn-primary:disabled { background: #6b9fd6; color: #fff; cursor: not-allowed; }
         .btn-success { background: var(--pass); color: #fff; }
         .btn-success:hover { background: #15803d; }
         .btn-danger { background: var(--fail); color: #fff; }
@@ -74,7 +74,7 @@
             border: 6px solid currentColor;
         }
         .score-gauge .val { font-size: 2.5rem; line-height: 1; }
-        .score-gauge .lbl { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; opacity: .8; }
+        .score-gauge .lbl { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
         .sc-pass { color: var(--pass); }
         .sc-warn { color: var(--warn); }
         .sc-fail { color: var(--fail); }
@@ -173,8 +173,8 @@
         <!-- Header -->
         <div class="flex items-center justify-between mb-2" style="flex-wrap:wrap;gap:1rem;">
             <div>
-                <h1 style="font-size:1.5rem;font-weight:700;margin:0;">Canvas A11Y Audit</h1>
-                <p class="text-muted text-sm">WCAG 2.1 AA compliance checker for Canvas LMS</p>
+                <h1 style="font-size:1.5rem;font-weight:700;margin:0;">Accessiflow</h1>
+                <p class="text-muted text-sm">Canvas LMS accessibility auditor — WCAG 2.1 AA &amp; Section 508</p>
             </div>
             <div x-show="userName" class="text-sm text-muted">
                 Signed in as <strong x-text="userName"></strong>
@@ -208,6 +208,40 @@
                 <span x-show="configError" class="text-danger text-sm" x-text="configError"></span>
                 <span x-show="validated" class="text-success text-sm">Connected</span>
             </div>
+
+            <!-- AI Provider (Optional) -->
+            <details style="margin-top:1.5rem;border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;" x-show="validated">
+                <summary style="cursor:pointer;font-weight:600;font-size:.95rem;">AI Provider (Optional)</summary>
+                <div style="margin-top:1rem;">
+                    <label for="ai-provider">AI Provider</label>
+                    <select id="ai-provider" x-model="aiProvider" style="width:100%;padding:.6rem .75rem;border:1px solid var(--border);border-radius:6px;font-size:.95rem;margin-bottom:1rem;background:#fff;">
+                        <option value="">None — skip AI features</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI (GPT-4o)</option>
+                        <option value="google">Google (Gemini)</option>
+                        <option value="grok">Grok (xAI)</option>
+                    </select>
+
+                    <template x-if="aiProvider">
+                        <div>
+                            <label for="ai-key">API Key</label>
+                            <input id="ai-key" type="password" x-model="aiApiKey" placeholder="Your API key (stored locally, never sent to our servers)">
+
+                            <label for="ai-model">Model (optional override)</label>
+                            <input id="ai-model" type="text" x-model="aiModel" placeholder="Leave blank for default">
+
+                            <div class="flex items-center gap-2 mt-1">
+                                <button class="btn btn-outline" @click="validateAI()" :disabled="!aiApiKey || aiValidating">
+                                    <span x-show="aiValidating" class="spinner"></span>
+                                    <span x-text="aiValidating ? 'Validating...' : 'Validate Key'"></span>
+                                </button>
+                                <span x-show="aiValidated" class="text-success text-sm">Key validated</span>
+                                <span x-show="aiError" class="text-danger text-sm" x-text="aiError"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </details>
         </div>
 
         <!-- ═══════════════ Step 2: Select Course ═══════════════ -->
@@ -229,6 +263,16 @@
                     <p><span x-text="c.course_code"></span> <span x-show="c.term" x-text="' — ' + c.term"></span></p>
                 </div>
             </template>
+
+            <div x-show="selectedCourse && courseMeta" class="card" style="margin-top:1rem;background:#f8fafc;">
+                <h3 style="font-size:.95rem;margin-bottom:.5rem;">Course Details</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.25rem .5rem;font-size:.88rem;">
+                    <span class="text-muted">Instructor:</span><span x-text="courseMeta?.instructor_name || '—'"></span>
+                    <span class="text-muted">Term:</span><span x-text="courseMeta?.term_name || '—'"></span>
+                    <span class="text-muted">Enrollment:</span><span x-text="(courseMeta?.enrollment_count || 0) + ' students'"></span>
+                    <span class="text-muted">Course Code:</span><span x-text="courseMeta?.course_code || '—'"></span>
+                </div>
+            </div>
 
             <div class="mt-2" x-show="selectedCourse">
                 <button class="btn btn-primary" @click="startAudit()">
@@ -338,7 +382,7 @@
                 <p class="text-muted text-sm mb-1" x-text="allIssues().length + ' issue' + (allIssues().length !== 1 ? 's' : '') + ' found, ordered by severity.'"></p>
                 <div style="overflow-x:auto;">
                     <table class="tbl">
-                        <thead><tr><th>Severity</th><th>Check</th><th>Item</th><th>WCAG</th><th>Description</th><th class="tc">Fixable</th></tr></thead>
+                        <thead><tr><th>Severity</th><th>Check</th><th>Item</th><th>WCAG</th><th>Standards</th><th>Description</th><th class="tc">Actions</th></tr></thead>
                         <tbody>
                             <template x-for="(iss, idx) in allIssues()" :key="idx">
                                 <tr>
@@ -346,6 +390,9 @@
                                     <td class="mono" x-text="iss.check_id"></td>
                                     <td x-text="iss._itemName" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></td>
                                     <td><a class="text-sm" style="color:var(--primary);" :href="'https://www.w3.org/WAI/WCAG21/Understanding/' + iss.wcag_criterion.replaceAll('.', '')" target="_blank" rel="noopener" x-text="iss.wcag_criterion"></a></td>
+                                    <td class="text-sm">
+                                        <span x-show="getStandards(iss)" x-text="getStandards(iss)"></span>
+                                    </td>
                                     <td>
                                         <span x-text="iss.title"></span>
                                         <code x-show="iss.element_html" class="mono text-sm" style="display:block;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;background:#f8fafc;padding:.15em .4em;border-radius:3px;margin-top:.2rem;" x-text="iss.element_html?.substring(0, 120)"></code>
@@ -355,6 +402,9 @@
                                         <span x-show="!iss.fixed && iss.auto_fixable" title="Auto-fixable">&#9881;</span>
                                         <span x-show="!iss.fixed && !iss.auto_fixable && iss.ai_fixable" title="AI-fixable">&#9733;</span>
                                         <span x-show="!iss.fixed && !iss.auto_fixable && !iss.ai_fixable" title="Manual">—</span>
+                                        <button x-show="aiValidated && !iss.fixed" class="btn btn-outline" style="padding:.2em .5em;font-size:.72rem;" @click="getAISuggestion(idx)" :disabled="iss._aiLoading">
+                                            AI
+                                        </button>
                                     </td>
                                 </tr>
                             </template>
@@ -429,6 +479,7 @@
             <div class="flex gap-2" style="flex-wrap:wrap;">
                 <a class="btn btn-primary" :href="'/api/report/' + jobId + '/html'" download>Download HTML Report</a>
                 <a class="btn btn-outline" :href="'/api/report/' + jobId + '/json'" download>Download JSON Report</a>
+                <a class="btn btn-outline" :href="'/api/report/' + jobId + '/vpat'" download>Download VPAT Report</a>
             </div>
 
             <div class="mt-2">
@@ -438,8 +489,8 @@
 
         <!-- Footer -->
         <footer style="text-align:center;color:var(--muted);font-size:.78rem;padding:1.5rem 0;border-top:1px solid var(--border);margin-top:1rem;">
-            <p>Built with <strong>canvas-a11y-audit</strong> — WCAG 2.1 AA compliance checker</p>
-            <p>Open source under MIT License</p>
+            <p>Built with <strong>Accessiflow</strong> — Canvas LMS accessibility auditor</p>
+            <p>Open source under AGPL-3.0 License</p>
         </footer>
     </div>
 

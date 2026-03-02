@@ -1,4 +1,6 @@
 """Application configuration via environment variables and .env file."""
+from __future__ import annotations
+
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +18,11 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 50
     rate_limit_delay: float = 0.25  # 250ms between API calls
     request_timeout: float = 30.0
+
+    # AI provider settings (optional — BYO key)
+    ai_provider: str = ""
+    ai_api_key: str = ""
+    ai_model: str = ""
 
 
 def get_settings(**overrides) -> Settings:

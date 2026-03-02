@@ -57,6 +57,7 @@ async def run_audit(
             job.course_name = course.get("name", f"Course {job.course_id}")
 
             fetcher = ContentFetcher(client, job.course_id)
+            metadata = await fetcher.fetch_course_metadata()
             content_items, file_items = await fetcher.fetch_all()
 
             content_count = len(content_items)
@@ -124,6 +125,12 @@ async def run_audit(
                 audit_timestamp=datetime.now(),
                 content_items=content_items,
                 file_items=[f for f in file_items if f.issues],
+                course_code=metadata.get("course_code", ""),
+                term_name=metadata.get("term_name", ""),
+                instructor_name=metadata.get("instructor_name", ""),
+                instructor_email=metadata.get("instructor_email", ""),
+                enrollment_count=metadata.get("enrollment_count", 0),
+                department=metadata.get("department", ""),
             )
             score_course(result)
 
