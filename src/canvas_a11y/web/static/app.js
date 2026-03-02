@@ -10,7 +10,6 @@ function auditApp() {
     // Step 1: Config
     canvasUrl: 'https://canvas.jccc.edu',
     apiToken: '',
-    anthropicKey: '',
     connecting: false,
     validated: false,
     configError: '',
@@ -64,7 +63,6 @@ function auditApp() {
           body: JSON.stringify({
             canvas_base_url: this.canvasUrl,
             canvas_api_token: this.apiToken,
-            anthropic_api_key: this.anthropicKey,
           }),
         });
         const data = await resp.json();

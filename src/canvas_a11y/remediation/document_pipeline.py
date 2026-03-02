@@ -9,7 +9,6 @@ from canvas_a11y.models import CourseAuditResult, FileItem, Severity
 from canvas_a11y.canvas.client import CanvasClient
 from canvas_a11y.canvas.file_manager import FileManager
 from canvas_a11y.remediation.pdf_remediator import PDFRemediator
-from canvas_a11y.remediation.ai_remediator import AIRemediator
 
 
 class DocumentPipeline:
@@ -20,12 +19,10 @@ class DocumentPipeline:
         client: CanvasClient,
         course_id: int,
         output_dir: Path,
-        ai_remediator: AIRemediator | None = None,
         console: Console | None = None,
     ):
         self.file_manager = FileManager(client, course_id, output_dir)
         self.pdf_remediator = PDFRemediator()
-        self.ai = ai_remediator
         self.console = console or Console()
         self.output_dir = output_dir
         self.remediated_dir = output_dir / "remediated"
@@ -82,18 +79,8 @@ class DocumentPipeline:
 
     async def _remediate_pdf(self, file_item: FileItem, local_path: Path, output_path: Path) -> dict:
         """Remediate a PDF file."""
-        title = None
         language = "en"
-
-        # Use AI to analyze if available
-        if self.ai:
-            self.console.print(f"  Analyzing with AI: {file_item.display_name}")
-            analysis = self.ai.analyze_pdf_content(local_path)
-            title = analysis.get("suggested_title")
-            language = analysis.get("suggested_language", "en")
-
-        if not title:
-            title = file_item.display_name.rsplit(".", 1)[0].replace("-", " ").replace("_", " ").title()
+        title = file_item.display_name.rsplit(".", 1)[0].replace("-", " ").replace("_", " ").title()
 
         self.pdf_remediator.remediate_full(local_path, output_path, title=title, language=language)
         file_item.remediated_path = output_path

@@ -26,7 +26,6 @@ from canvas_a11y.reporting.console_report import print_report
 from canvas_a11y.reporting.html_report import generate_html_report
 from canvas_a11y.reporting.json_report import generate_json_report
 from canvas_a11y.remediation.autofix import AutoFixer
-from canvas_a11y.remediation.ai_remediator import AIRemediator
 from canvas_a11y.remediation.document_pipeline import DocumentPipeline
 from canvas_a11y.models import CourseAuditResult
 
@@ -46,13 +45,12 @@ def cli():
 @click.option("--token", envvar="CA11Y_CANVAS_API_TOKEN", help="Canvas API token")
 @click.option("--base-url", envvar="CA11Y_CANVAS_BASE_URL", default=None, help="Canvas base URL")
 @click.option("--auto-fix", is_flag=True, help="Apply safe auto-fixes")
-@click.option("--ai", is_flag=True, help="Use Claude AI for remediation")
 @click.option("--apply", is_flag=True, help="Push fixes back to Canvas (required with --auto-fix)")
 @click.option("--dry-run", is_flag=True, help="Show what would be fixed without applying")
 @click.option("--no-confirm", is_flag=True, help="Skip fix confirmation prompts")
 @click.option("--output-dir", type=click.Path(), default="output", help="Output directory")
 @click.option("--format", "output_format", type=click.Choice(["console", "html", "json", "all"]), default="all", help="Report format")
-def audit(course_id, token, base_url, auto_fix, ai, apply, dry_run, no_confirm, output_dir, output_format):
+def audit(course_id, token, base_url, auto_fix, apply, dry_run, no_confirm, output_dir, output_format):
     """Audit a Canvas course for accessibility compliance."""
     settings = get_settings()
     if token:
@@ -67,10 +65,10 @@ def audit(course_id, token, base_url, auto_fix, ai, apply, dry_run, no_confirm, 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    asyncio.run(_audit(settings, course_id, auto_fix, ai, apply, dry_run, no_confirm, output_path, output_format))
+    asyncio.run(_audit(settings, course_id, auto_fix, apply, dry_run, no_confirm, output_path, output_format))
 
 
-async def _audit(settings, course_id, auto_fix, ai, apply, dry_run, no_confirm, output_path, output_format):
+async def _audit(settings, course_id, auto_fix, apply, dry_run, no_confirm, output_path, output_format):
     """Async audit implementation."""
     async with CanvasClient(
         settings.canvas_base_url,
@@ -144,10 +142,6 @@ async def _audit(settings, course_id, auto_fix, ai, apply, dry_run, no_confirm, 
         if auto_fix:
             fixer = AutoFixer(console=console, no_confirm=no_confirm)
 
-            if ai and settings.anthropic_api_key:
-                # AI-assisted fixes could be added here
-                pass
-
             for item in result.content_items:
                 fixed_html = fixer.fix_content_item(item, dry_run=dry_run or not apply)
                 if fixed_html and apply and not dry_run:
@@ -199,9 +193,8 @@ async def _pick_course(client: CanvasClient) -> int | None:
 @cli.command()
 @click.option("--course-id", type=int, required=True, help="Canvas course ID")
 @click.option("--token", envvar="CA11Y_CANVAS_API_TOKEN", help="Canvas API token")
-@click.option("--ai", is_flag=True, help="Use Claude AI for analysis")
 @click.option("--output-dir", type=click.Path(), default="output", help="Output directory")
-def remediate(course_id, token, ai, output_dir):
+def remediate(course_id, token, output_dir):
     """Download and remediate non-compliant documents."""
     settings = get_settings()
     if token:
@@ -212,10 +205,10 @@ def remediate(course_id, token, ai, output_dir):
         raise SystemExit(1)
 
     output_path = Path(output_dir)
-    asyncio.run(_remediate(settings, course_id, ai, output_path))
+    asyncio.run(_remediate(settings, course_id, output_path))
 
 
-async def _remediate(settings, course_id, use_ai, output_path):
+async def _remediate(settings, course_id, output_path):
     """Async remediation implementation."""
     async with CanvasClient(
         settings.canvas_base_url,
@@ -245,13 +238,8 @@ async def _remediate(settings, course_id, use_ai, output_path):
             except Exception as e:
                 console.print(f"  [yellow]Could not check {file_item.display_name}: {e}[/yellow]")
 
-        # Setup AI if requested
-        ai_remediator = None
-        if use_ai and settings.anthropic_api_key:
-            ai_remediator = AIRemediator(settings.anthropic_api_key)
-
         # Run pipeline
-        pipeline = DocumentPipeline(client, course_id, output_path, ai_remediator, console)
+        pipeline = DocumentPipeline(client, course_id, output_path, console=console)
         manifest = await pipeline.remediate_files(file_items)
 
         if manifest:

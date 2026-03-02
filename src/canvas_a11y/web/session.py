@@ -34,7 +34,6 @@ class SessionState:
     session_id: str
     canvas_base_url: str = ""
     canvas_api_token: str = ""
-    anthropic_api_key: str = ""
     user_name: str = ""
     validated: bool = False
     jobs: dict[str, AuditJob] = field(default_factory=dict)

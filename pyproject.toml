@@ -17,7 +17,7 @@ dependencies = [
     "pikepdf",
     "python-docx",
     "python-pptx",
-    "anthropic",
+
     "click",
     "rich",
     "pydantic",

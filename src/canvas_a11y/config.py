@@ -12,7 +12,6 @@ class Settings(BaseSettings):
 
     canvas_base_url: str = "https://canvas.jccc.edu"
     canvas_api_token: str = ""
-    anthropic_api_key: str = ""
     output_dir: Path = Path("output")
     max_file_size_mb: int = 50
     rate_limit_delay: float = 0.25  # 250ms between API calls

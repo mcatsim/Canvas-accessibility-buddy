@@ -7,14 +7,12 @@ from pydantic import BaseModel
 class ConfigRequest(BaseModel):
     canvas_base_url: str = "https://canvas.jccc.edu"
     canvas_api_token: str
-    anthropic_api_key: str = ""
 
 
 class ConfigStatus(BaseModel):
     validated: bool
     user_name: str = ""
     canvas_base_url: str = ""
-    has_anthropic_key: bool = False
 
 
 class CourseInfo(BaseModel):

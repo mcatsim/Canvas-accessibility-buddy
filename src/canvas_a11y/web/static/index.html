@@ -200,9 +200,6 @@
             <label for="api-token">Canvas API Token</label>
             <input id="api-token" type="password" x-model="apiToken" placeholder="Your Canvas API access token">
 
-            <label for="anthropic-key">Anthropic API Key <span class="text-muted text-sm">(optional — for AI fixes)</span></label>
-            <input id="anthropic-key" type="password" x-model="anthropicKey" placeholder="sk-ant-...">
-
             <div class="flex items-center gap-2 mt-1">
                 <button class="btn btn-primary" @click="connect()" :disabled="connecting || !apiToken">
                     <span x-show="connecting" class="spinner"></span>

@@ -25,7 +25,6 @@ async def set_config(req: ConfigRequest) -> dict:
 
     session.canvas_base_url = req.canvas_base_url
     session.canvas_api_token = req.canvas_api_token
-    session.anthropic_api_key = req.anthropic_api_key
     session.user_name = user_name
     session.validated = True
 
@@ -40,5 +39,4 @@ async def config_status() -> ConfigStatus:
         validated=session.validated,
         user_name=session.user_name,
         canvas_base_url=session.canvas_base_url,
-        has_anthropic_key=bool(session.anthropic_api_key),
     )
