@@ -821,7 +821,7 @@
                             <h2 class="view-title" x-text="viewTitle"></h2>
                         </div>
                         <div class="dash-header-right">
-                            <button class="btn btn-primary btn-sm" @click="showNewScanModal = true" x-show="canAudit">
+                            <button class="btn btn-primary btn-sm" @click="openNewScanModal()" x-show="canAudit">
                                 + New Scan
                             </button>
                             <div class="user-chip" x-show="displayName">
@@ -940,8 +940,8 @@
 
                                 <!-- Add key form -->
                                 <div x-show="showAddKeyForm" class="card" style="background:#f8fafc;margin-bottom:1rem;">
-                                    <label for="key-label">Label</label>
-                                    <input id="key-label" type="text" x-model="newKeyLabel" placeholder="e.g., Main Canvas Instance">
+                                    <label for="key-name">Name</label>
+                                    <input id="key-name" type="text" x-model="newKeyLabel" placeholder="e.g., Main Canvas Instance">
 
                                     <label for="key-url">Canvas URL</label>
                                     <input id="key-url" type="url" x-model="newKeyUrl" placeholder="https://canvas.example.edu">
@@ -961,22 +961,23 @@
                                     <p>Add a Canvas API key to get started with scanning.</p>
                                 </div>
 
-                                <div x-show="savedKeys.length > 0" style="overflow-x:auto;">
-                                    <table class="tbl">
-                                        <thead><tr><th>Label</th><th>Canvas URL</th><th>Created</th><th class="tc">Actions</th></tr></thead>
-                                        <tbody>
-                                            <template x-for="key in savedKeys" :key="key.id">
-                                                <tr>
-                                                    <td><strong x-text="key.label"></strong></td>
-                                                    <td class="mono text-sm" x-text="key.canvas_base_url"></td>
-                                                    <td class="text-sm text-muted" x-text="formatDate(key.created_at)"></td>
-                                                    <td class="tc">
-                                                        <button class="btn btn-outline btn-sm" style="color:var(--fail);" @click="deleteKey(key.id)">Delete</button>
-                                                    </td>
-                                                </tr>
-                                            </template>
-                                        </tbody>
-                                    </table>
+                                <!-- Key cards -->
+                                <div x-show="savedKeys.length > 0">
+                                    <template x-for="key in savedKeys" :key="key.id">
+                                        <div class="scan-card" style="cursor:default;">
+                                            <div class="scan-card-header">
+                                                <h4 x-text="key.name"></h4>
+                                                <button class="btn btn-outline btn-sm" style="color:var(--fail);" @click="deleteKey(key.id)">Delete</button>
+                                            </div>
+                                            <div class="scan-card-meta" style="flex-wrap:wrap;">
+                                                <span class="mono text-sm" x-text="key.canvas_url"></span>
+                                                <span x-show="key.course_count != null" x-text="key.course_count + ' courses'"></span>
+                                                <span x-show="key.last_used_at" x-text="'Last used: ' + timeAgo(key.last_used_at)"></span>
+                                                <span class="mono text-sm" x-text="'Token: ****' + key.token_hint"></span>
+                                            </div>
+                                            <div class="text-sm text-muted mt-1" x-text="'Added ' + formatDate(key.created_at)"></div>
+                                        </div>
+                                    </template>
                                 </div>
                             </div>
                         </div>
@@ -1436,19 +1437,89 @@
                     </footer>
                 </div>
 
-                <!-- ═══════════ New Scan Modal (placeholder) ═══════════ -->
-                <div x-show="showNewScanModal" class="modal-overlay" x-cloak @keydown.escape.window="showNewScanModal = false">
+                <!-- ═══════════ New Scan Modal ═══════════ -->
+                <div x-show="showNewScanModal" class="modal-overlay" x-cloak @click="closeNewScanModal()" @keydown.escape.window="closeNewScanModal()">
                     <div class="modal-card" @click.stop>
                         <div class="flex items-center justify-between mb-2">
                             <h3 style="font-size:1.15rem;margin:0;">New Scan</h3>
-                            <button class="btn btn-ghost" @click="showNewScanModal = false" aria-label="Close">
+                            <button class="btn btn-ghost" @click="closeNewScanModal()" aria-label="Close">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                         </div>
-                        <p class="text-muted text-sm">New Scan modal will be implemented in Task 12.</p>
-                        <p class="text-muted text-sm">Select an API key, choose a course, and start a scan.</p>
-                        <div class="mt-2">
-                            <button class="btn btn-outline" @click="showNewScanModal = false">Close</button>
+
+                        <!-- API Key Selection -->
+                        <label for="scan-key-select">Canvas API Key</label>
+                        <select id="scan-key-select" @change="loadCoursesForKey($event.target.value)" :disabled="newScanLoading">
+                            <option value="">-- Select an API key --</option>
+                            <template x-for="key in savedKeys" :key="key.id">
+                                <option :value="key.id" x-text="key.name + ' (' + key.canvas_url + ')'"></option>
+                            </template>
+                            <option value="__add_new__">+ Add New Key...</option>
+                        </select>
+
+                        <!-- Inline Add Key form (shown when "Add New Key" selected) -->
+                        <div x-show="newScanAddKeyInline" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;">
+                            <label for="inline-key-name">Key Name</label>
+                            <input id="inline-key-name" type="text" x-model="newKeyLabel" placeholder="e.g., Main Canvas Instance">
+                            <label for="inline-key-url">Canvas URL</label>
+                            <input id="inline-key-url" type="url" x-model="newKeyUrl" placeholder="https://canvas.example.edu">
+                            <label for="inline-key-token">API Token</label>
+                            <input id="inline-key-token" type="password" x-model="newKeyToken" placeholder="Canvas API access token">
+                            <div class="flex items-center gap-1">
+                                <button class="btn btn-success btn-sm" @click="addKeyInline()" :disabled="!newKeyLabel || !newKeyUrl || !newKeyToken">Save Key</button>
+                                <button class="btn btn-outline btn-sm" @click="newScanAddKeyInline = false">Cancel</button>
+                            </div>
+                            <span x-show="keyError" class="text-danger text-sm" x-text="keyError"></span>
+                        </div>
+
+                        <!-- Loading state for courses -->
+                        <div x-show="newScanLoading" class="flex items-center gap-1 text-muted" style="padding:.75rem 0;">
+                            <span class="spinner"></span> Loading courses...
+                        </div>
+
+                        <!-- Course selection -->
+                        <div x-show="newScanCourses.length > 0 && !newScanLoading">
+                            <!-- Search/filter -->
+                            <label for="course-filter">Filter Courses</label>
+                            <input id="course-filter" type="search" x-model="newScanFilter" placeholder="Search courses...">
+
+                            <!-- Select All toggle -->
+                            <div class="flex items-center gap-1 mb-1">
+                                <label style="margin:0;font-size:.85rem;cursor:pointer;">
+                                    <input type="checkbox" @change="toggleSelectAll()" :checked="newScanSelected.length === filteredCourses.length && filteredCourses.length > 0" style="margin-right:.35rem;">
+                                    Select All (<span x-text="filteredCourses.length"></span> courses)
+                                </label>
+                                <span x-show="newScanSelected.length > 0" class="text-sm text-muted" style="margin-left:auto;" x-text="newScanSelected.length + ' selected'"></span>
+                            </div>
+
+                            <!-- Course list with checkboxes -->
+                            <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#fafbfc;">
+                                <template x-for="course in filteredCourses" :key="course.id">
+                                    <label class="flex items-center gap-1" style="padding:.55rem 1rem;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:.88rem;margin:0;">
+                                        <input type="checkbox" :value="course.id" x-model="newScanSelected" style="margin:0;">
+                                        <span style="flex:1;" x-text="course.name"></span>
+                                        <span x-show="course.code" class="text-sm text-muted" x-text="course.code"></span>
+                                    </label>
+                                </template>
+                                <div x-show="filteredCourses.length === 0" class="text-muted text-sm" style="padding:1rem;text-align:center;">
+                                    No courses match your filter.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- No courses message -->
+                        <div x-show="newScanKeyId && newScanCourses.length === 0 && !newScanLoading" class="text-muted text-sm" style="padding:.75rem 0;">
+                            No courses found for this API key. Verify the token has teacher enrollment.
+                        </div>
+
+                        <!-- Action buttons -->
+                        <div class="flex items-center gap-1 mt-2">
+                            <button class="btn btn-primary"
+                                @click="startScans()"
+                                :disabled="newScanSelected.length === 0 || newScanLoading"
+                                x-text="newScanSelected.length > 0 ? 'Start ' + newScanSelected.length + ' Scan' + (newScanSelected.length > 1 ? 's' : '') : 'Start Scans'">
+                            </button>
+                            <button class="btn btn-outline" @click="closeNewScanModal()">Cancel</button>
                         </div>
                     </div>
                 </div>

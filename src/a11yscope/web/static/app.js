@@ -60,9 +60,17 @@ function dashboardApp() {
     savedKeys: [],
     showAddKeyForm: false,
     newKeyLabel: '',
-    newKeyUrl: '',
+    newKeyUrl: 'https://',
     newKeyToken: '',
     keyError: '',
+
+    // ─── New Scan Modal ─────────────────────────────────────
+    newScanKeyId: '',
+    newScanCourses: [],
+    newScanSelected: [],
+    newScanFilter: '',
+    newScanLoading: false,
+    newScanAddKeyInline: false,
 
     // ─── Scan state (preserved for scan detail view) ───────
     result: null,
@@ -342,20 +350,24 @@ function dashboardApp() {
     // ─── API Key Management ────────────────────────────────
     async addKey() {
       this.keyError = '';
+      if (!this.newKeyUrl.startsWith('https://')) {
+        this.keyError = 'Canvas URL must start with https://';
+        return;
+      }
       try {
         const resp = await fetchWithAuth('/api/keys', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            label: this.newKeyLabel,
-            canvas_base_url: this.newKeyUrl,
-            canvas_api_token: this.newKeyToken,
+            name: this.newKeyLabel,
+            canvas_url: this.newKeyUrl,
+            token: this.newKeyToken,
           }),
         });
         if (resp.ok) {
           this.showAddKeyForm = false;
           this.newKeyLabel = '';
-          this.newKeyUrl = '';
+          this.newKeyUrl = 'https://';
           this.newKeyToken = '';
           await this.loadKeys();
         } else {
@@ -374,6 +386,148 @@ function dashboardApp() {
         await this.loadKeys();
       } catch (e) {
         // ignore
+      }
+    },
+
+    // ─── New Scan Modal ─────────────────────────────────────
+    openNewScanModal() {
+      this.showNewScanModal = true;
+      this.newScanKeyId = '';
+      this.newScanCourses = [];
+      this.newScanSelected = [];
+      this.newScanFilter = '';
+      this.newScanLoading = false;
+      this.newScanAddKeyInline = false;
+      this.loadKeys();
+    },
+
+    closeNewScanModal() {
+      this.showNewScanModal = false;
+      this.newScanKeyId = '';
+      this.newScanCourses = [];
+      this.newScanSelected = [];
+      this.newScanFilter = '';
+      this.newScanLoading = false;
+      this.newScanAddKeyInline = false;
+    },
+
+    async loadCoursesForKey(keyId) {
+      if (keyId === '__add_new__') {
+        this.newScanAddKeyInline = true;
+        this.newScanKeyId = '';
+        this.newScanCourses = [];
+        this.newScanSelected = [];
+        return;
+      }
+      this.newScanAddKeyInline = false;
+      if (!keyId) {
+        this.newScanKeyId = '';
+        this.newScanCourses = [];
+        this.newScanSelected = [];
+        return;
+      }
+      this.newScanKeyId = keyId;
+      this.newScanCourses = [];
+      this.newScanSelected = [];
+      this.newScanFilter = '';
+      this.newScanLoading = true;
+      try {
+        const resp = await fetchWithAuth(`/api/keys/${keyId}/courses`);
+        if (resp.ok) {
+          this.newScanCourses = await resp.json();
+        } else {
+          const data = await resp.json();
+          this.keyError = data.detail || 'Failed to load courses';
+        }
+      } catch (e) {
+        this.keyError = 'Network error: ' + e.message;
+      } finally {
+        this.newScanLoading = false;
+      }
+    },
+
+    get filteredCourses() {
+      if (!this.newScanFilter) return this.newScanCourses;
+      const q = this.newScanFilter.toLowerCase();
+      return this.newScanCourses.filter(c =>
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.code && c.code.toLowerCase().includes(q))
+      );
+    },
+
+    toggleSelectAll() {
+      const visible = this.filteredCourses;
+      const visibleIds = visible.map(c => String(c.id));
+      const allSelected = visibleIds.every(id => this.newScanSelected.includes(id));
+      if (allSelected) {
+        // Deselect all visible
+        this.newScanSelected = this.newScanSelected.filter(id => !visibleIds.includes(id));
+      } else {
+        // Select all visible (merge with existing)
+        const current = new Set(this.newScanSelected);
+        for (const id of visibleIds) current.add(id);
+        this.newScanSelected = [...current];
+      }
+    },
+
+    async startScans() {
+      if (this.newScanSelected.length === 0 || !this.newScanKeyId) return;
+      this.newScanLoading = true;
+      try {
+        const resp = await fetchWithAuth('/api/scans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key_id: this.newScanKeyId,
+            course_ids: this.newScanSelected.map(id => Number(id)),
+          }),
+        });
+        if (resp.ok) {
+          this.closeNewScanModal();
+          await this.loadScans();
+          this.navigateTo('dashboard');
+        } else {
+          const data = await resp.json();
+          this.keyError = data.detail || 'Failed to start scans';
+        }
+      } catch (e) {
+        this.keyError = 'Network error: ' + e.message;
+      } finally {
+        this.newScanLoading = false;
+      }
+    },
+
+    async addKeyInline() {
+      this.keyError = '';
+      if (!this.newKeyUrl.startsWith('https://')) {
+        this.keyError = 'Canvas URL must start with https://';
+        return;
+      }
+      try {
+        const resp = await fetchWithAuth('/api/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: this.newKeyLabel,
+            canvas_url: this.newKeyUrl,
+            token: this.newKeyToken,
+          }),
+        });
+        if (resp.ok) {
+          const newKey = await resp.json();
+          this.newKeyLabel = '';
+          this.newKeyUrl = 'https://';
+          this.newKeyToken = '';
+          this.newScanAddKeyInline = false;
+          await this.loadKeys();
+          // Auto-select the newly added key and load its courses
+          this.loadCoursesForKey(newKey.id);
+        } else {
+          const data = await resp.json();
+          this.keyError = data.detail || 'Failed to save key';
+        }
+      } catch (e) {
+        this.keyError = 'Network error: ' + e.message;
       }
     },
 

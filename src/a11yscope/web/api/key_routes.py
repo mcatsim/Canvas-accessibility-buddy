@@ -18,7 +18,7 @@ from a11yscope.auth.dependencies import get_current_user
 from a11yscope.audit_log.logger import AuditLogger, get_audit_logger
 from a11yscope.audit_log.schemas import AuditAction
 from a11yscope.config import get_settings
-from a11yscope.crypto import encrypt_token
+from a11yscope.crypto import decrypt_token, encrypt_token
 from a11yscope.db.models import ApiKey
 from a11yscope.db.session import get_db
 
@@ -137,3 +137,35 @@ async def delete_key(
         AuditAction.KEY_DELETED, user=user,
         resource_type="api_key", resource_id=key_id,
     )
+
+
+@router.get("/keys/{key_id}/courses")
+async def list_courses_for_key(
+    key_id: str,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Fetch available courses for a saved API key."""
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == user.id)
+    )
+    key = result.scalar_one_or_none()
+    if not key:
+        raise HTTPException(status_code=404, detail="Key not found")
+
+    settings = get_settings()
+    token = decrypt_token(key.encrypted_token, settings.effective_secret_key)
+
+    from a11yscope.canvas.client import CanvasClient
+    async with CanvasClient(key.canvas_url, token) as client:
+        courses = await client.get_courses()
+
+    # Update cached course count
+    key.course_count = len(courses)
+    key.last_used_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return [
+        {"id": c["id"], "name": c["name"], "code": c.get("course_code", "")}
+        for c in courses
+    ]
