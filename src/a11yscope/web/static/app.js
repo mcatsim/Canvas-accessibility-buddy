@@ -1,5 +1,5 @@
 /**
- * A11yScope — Alpine.js SPA (v2.0 — auth-aware)
+ * A11yScope — Alpine.js Dashboard App (v3.0 — dashboard shell)
  */
 
 /**
@@ -28,9 +28,9 @@ async function fetchWithAuth(url, options = {}) {
   return resp;
 }
 
-function auditApp() {
+function dashboardApp() {
   return {
-    // Auth state
+    // ─── Auth state ────────────────────────────────────────
     authMode: 'none',
     authUser: null,
     showLogin: false,
@@ -43,44 +43,40 @@ function auditApp() {
     cpNewPassword: '',
     cpError: '',
 
-    // Admin panel
-    showAdmin: false,
+    // ─── Dashboard state ───────────────────────────────────
+    currentView: 'dashboard',
+    sidebarOpen: false,
+    showNewScanModal: false,
+    selectedScanId: null,
 
-    // Wizard state
-    step: 1,
-    stepLabels: ['Configure', 'Select Course', 'Audit', 'Results', 'Fix', 'Reports'],
+    // ─── Dashboard data ────────────────────────────────────
+    activeScans: [],
+    queuedScans: [],
+    recentScans: [],
 
-    // Step 1: Config
-    canvasUrl: 'https://canvas.jccc.edu',
-    apiToken: '',
-    connecting: false,
-    validated: false,
-    configError: '',
-    userName: '',
+    // ─── API Keys ──────────────────────────────────────────
+    savedKeys: [],
+    showAddKeyForm: false,
+    newKeyLabel: '',
+    newKeyUrl: '',
+    newKeyToken: '',
+    keyError: '',
 
-    // Step 2: Courses
-    courses: [],
-    courseFilter: '',
-    loadingCourses: false,
-    selectedCourse: null,
-
-    // Step 3: Audit progress
+    // ─── Scan state (preserved for scan detail view) ───────
+    result: null,
     jobId: null,
     progressLog: [],
     currentPhaseLabel: '',
     progressPct: 0,
     ws: null,
 
-    // Step 4: Results
-    result: null,
-
-    // Step 5: Fix
+    // ─── Fix state (preserved for scan detail view) ────────
     selectedFixes: [],
     pushToCanvas: false,
     fixing: false,
     fixResult: null,
 
-    // AI config
+    // ─── AI config ─────────────────────────────────────────
     aiProvider: '',
     aiApiKey: '',
     aiModel: '',
@@ -89,9 +85,7 @@ function auditApp() {
     aiError: '',
     aiSuggestions: {},
 
-    // Course metadata
-    courseMeta: null,
-
+    // ─── Init ──────────────────────────────────────────────
     async init() {
       // Check auth mode
       try {
@@ -130,21 +124,73 @@ function auditApp() {
         }
       }
 
-      // Check if already configured (page reload)
+      // Auth is resolved — load dashboard data
+      await this.loadDashboardData();
+    },
+
+    // ─── Dashboard data loading ────────────────────────────
+    async loadDashboardData() {
+      // Load keys, scans in parallel
+      await Promise.allSettled([
+        this.loadKeys(),
+        this.loadScans(),
+      ]);
+    },
+
+    async loadKeys() {
       try {
-        const resp = await fetchWithAuth('/api/config/status');
-        const data = await resp.json();
-        if (data.validated) {
-          this.validated = true;
-          this.userName = data.user_name;
-          this.canvasUrl = data.canvas_base_url;
+        const resp = await fetchWithAuth('/api/keys');
+        if (resp.ok) {
+          this.savedKeys = await resp.json();
         }
       } catch (e) {
-        // ignore
+        // Keys endpoint may not exist yet — ignore
       }
     },
 
-    // ─── Auth ─────────────────────────────────────────────────
+    async loadScans() {
+      try {
+        const resp = await fetchWithAuth('/api/scans');
+        if (resp.ok) {
+          const scans = await resp.json();
+          this.activeScans = scans.filter(s => s.status === 'running');
+          this.queuedScans = scans.filter(s => s.status === 'queued' || s.status === 'pending');
+          this.recentScans = scans.filter(s => s.status === 'complete' || s.status === 'failed')
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, 20);
+        }
+      } catch (e) {
+        // Scans endpoint may not exist yet — ignore
+      }
+    },
+
+    // ─── Navigation ────────────────────────────────────────
+    navigateTo(view) {
+      this.currentView = view;
+      this.sidebarOpen = false; // close mobile sidebar on nav
+
+      // Refresh data when navigating to certain views
+      if (view === 'dashboard') {
+        this.loadScans();
+      } else if (view === 'keys') {
+        this.loadKeys();
+      } else if (view === 'history') {
+        this.loadScans();
+      }
+    },
+
+    get viewTitle() {
+      const titles = {
+        dashboard: 'Dashboard',
+        keys: 'API Keys',
+        history: 'Scan History',
+        detail: 'Scan Detail',
+        admin: 'Administration',
+      };
+      return titles[this.currentView] || 'Dashboard';
+    },
+
+    // ─── Auth ──────────────────────────────────────────────
     async login() {
       this.loginLoading = true;
       this.loginError = '';
@@ -166,16 +212,8 @@ function auditApp() {
             this.showLogin = false;
             const meResp = await fetchWithAuth('/api/auth/me');
             if (meResp.ok) this.authUser = await meResp.json();
-            // Re-init
-            try {
-              const cfgResp = await fetchWithAuth('/api/config/status');
-              const cfgData = await cfgResp.json();
-              if (cfgData.validated) {
-                this.validated = true;
-                this.userName = cfgData.user_name;
-                this.canvasUrl = cfgData.canvas_base_url;
-              }
-            } catch (e) {}
+            // Load dashboard data after login
+            await this.loadDashboardData();
           }
         } else {
           this.loginError = data.detail || 'Login failed';
@@ -212,6 +250,8 @@ function auditApp() {
             const meResp = await fetchWithAuth('/api/auth/me');
             if (meResp.ok) this.authUser = await meResp.json();
           }
+          // Load dashboard data after password change
+          await this.loadDashboardData();
         } else {
           const data = await resp.json();
           this.cpError = data.detail || 'Failed to change password';
@@ -228,8 +268,11 @@ function auditApp() {
       localStorage.removeItem('access_token');
       this.authUser = null;
       this.showLogin = true;
-      this.validated = false;
-      this.userName = '';
+      this.currentView = 'dashboard';
+      this.activeScans = [];
+      this.queuedScans = [];
+      this.recentScans = [];
+      this.savedKeys = [];
     },
 
     get isAdmin() {
@@ -242,202 +285,52 @@ function auditApp() {
 
     get displayName() {
       if (this.authUser) return this.authUser.display_name || this.authUser.email;
-      return this.userName || '';
+      return '';
     },
 
     ssoLogin() {
       window.location.href = '/api/auth/sso/' + (this.authMode === 'sso' ? 'oidc' : 'oidc') + '/login';
     },
 
-    // ─── Step 1: Connect ─────────────────────────────────────
-    async connect() {
-      this.connecting = true;
-      this.configError = '';
+    // ─── API Key Management ────────────────────────────────
+    async addKey() {
+      this.keyError = '';
       try {
-        const resp = await fetchWithAuth('/api/config', {
+        const resp = await fetchWithAuth('/api/keys', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            canvas_base_url: this.canvasUrl,
-            canvas_api_token: this.apiToken,
+            label: this.newKeyLabel,
+            canvas_base_url: this.newKeyUrl,
+            canvas_api_token: this.newKeyToken,
           }),
         });
-        const data = await resp.json();
-        if (data.ok) {
-          this.validated = true;
-          this.userName = data.user_name;
-          await this.loadCourses();
-          this.step = 2;
+        if (resp.ok) {
+          this.showAddKeyForm = false;
+          this.newKeyLabel = '';
+          this.newKeyUrl = '';
+          this.newKeyToken = '';
+          await this.loadKeys();
         } else {
-          this.configError = data.error || 'Connection failed';
+          const data = await resp.json();
+          this.keyError = data.detail || 'Failed to save key';
         }
       } catch (e) {
-        this.configError = 'Network error: ' + e.message;
-      } finally {
-        this.connecting = false;
+        this.keyError = 'Network error: ' + e.message;
       }
     },
 
-    // ─── AI Validation ──────────────────────────────────────
-    async validateAI() {
-      this.aiValidating = true;
-      this.aiError = '';
+    async deleteKey(keyId) {
+      if (!confirm('Delete this API key? This cannot be undone.')) return;
       try {
-        const resp = await fetchWithAuth('/api/ai/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: this.aiProvider,
-            api_key: this.aiApiKey,
-            model: this.aiModel,
-          }),
-        });
-        const data = await resp.json();
-        if (data.ok) {
-          this.aiValidated = true;
-          this.aiModel = data.model;
-        } else {
-          this.aiError = data.error || 'Validation failed';
-        }
+        await fetchWithAuth(`/api/keys/${keyId}`, { method: 'DELETE' });
+        await this.loadKeys();
       } catch (e) {
-        this.aiError = 'Network error: ' + e.message;
-      } finally {
-        this.aiValidating = false;
+        // ignore
       }
     },
 
-    // ─── Step 2: Load Courses ────────────────────────────────
-    async loadCourses() {
-      this.loadingCourses = true;
-      try {
-        const resp = await fetchWithAuth('/api/courses');
-        this.courses = await resp.json();
-      } catch (e) {
-        this.configError = 'Failed to load courses';
-      } finally {
-        this.loadingCourses = false;
-      }
-    },
-
-    filteredCourses() {
-      if (!this.courseFilter) return this.courses;
-      const q = this.courseFilter.toLowerCase();
-      return this.courses.filter(
-        c => c.name.toLowerCase().includes(q) || c.course_code.toLowerCase().includes(q)
-      );
-    },
-
-    // ─── Step 3: Start Audit ─────────────────────────────────
-    async startAudit() {
-      this.step = 3;
-      this.progressLog = [];
-      this.progressPct = 0;
-      this.currentPhaseLabel = 'Starting audit...';
-      this.result = null;
-      this.fixResult = null;
-      this.selectedFixes = [];
-
-      try {
-        const resp = await fetchWithAuth('/api/audit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ course_id: this.selectedCourse.id }),
-        });
-        const data = await resp.json();
-        this.jobId = data.job_id;
-        this.connectWs();
-      } catch (e) {
-        this.progressLog.push({ type: 'error', message: 'Failed to start audit: ' + e.message });
-      }
-    },
-
-    connectWs() {
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      let wsUrl = `${proto}://${location.host}/ws/audit/${this.jobId}`;
-      // Pass JWT for authenticated WebSocket
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        wsUrl += `?token=${encodeURIComponent(token)}`;
-      }
-      this.ws = new WebSocket(wsUrl);
-
-      this.ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        this.progressLog.push(msg);
-        this.handleProgress(msg);
-      };
-
-      this.ws.onclose = () => {
-        if (this.step === 3 && !this.result) {
-          setTimeout(() => this.pollStatus(), 1000);
-        }
-      };
-
-      this.ws.onerror = () => {
-        setTimeout(() => this.pollStatus(), 1000);
-      };
-    },
-
-    handleProgress(msg) {
-      switch (msg.type) {
-        case 'phase':
-          this.currentPhaseLabel = msg.label;
-          const phases = { fetching: 10, checking: 40, files: 70, scoring: 90 };
-          this.progressPct = phases[msg.phase] || this.progressPct;
-          break;
-        case 'item_found':
-          break;
-        case 'item_checked':
-          if (msg.total > 0) {
-            this.progressPct = 40 + (msg.checked / msg.total) * 30;
-          }
-          break;
-        case 'file_checked':
-          break;
-        case 'complete':
-          this.progressPct = 100;
-          this.currentPhaseLabel = `Complete — Score: ${msg.score?.toFixed(1)}%`;
-          this.loadResult();
-          break;
-        case 'error':
-          this.currentPhaseLabel = 'Error: ' + msg.message;
-          break;
-      }
-    },
-
-    async pollStatus() {
-      if (!this.jobId) return;
-      try {
-        const resp = await fetchWithAuth(`/api/audit/${this.jobId}`);
-        const data = await resp.json();
-        if (data.status === 'complete' && data.result) {
-          this.result = data.result;
-          this.progressPct = 100;
-          this.step = 4;
-        } else if (data.status === 'failed') {
-          this.currentPhaseLabel = 'Failed: ' + (data.error || 'Unknown error');
-        } else if (data.status === 'running') {
-          setTimeout(() => this.pollStatus(), 2000);
-        }
-      } catch (e) {
-        setTimeout(() => this.pollStatus(), 3000);
-      }
-    },
-
-    async loadResult() {
-      try {
-        const resp = await fetchWithAuth(`/api/audit/${this.jobId}`);
-        const data = await resp.json();
-        if (data.result) {
-          this.result = data.result;
-          this.step = 4;
-        }
-      } catch (e) {
-        setTimeout(() => this.pollStatus(), 2000);
-      }
-    },
-
-    // ─── Step 4: Results helpers ─────────────────────────────
+    // ─── Results helpers (preserved for scan detail view) ──
     scoreClass(score) {
       if (score == null) return '';
       if (score >= 90) return 'sc-pass';
@@ -494,11 +387,84 @@ function auditApp() {
       return this.allIssues().some(i => i.auto_fixable && !i.fixed);
     },
 
-    // ─── Step 5: Fix ─────────────────────────────────────────
     fixableIssues() {
       return this.allIssues().filter(i => i.auto_fixable && !i.fixed);
     },
 
+    // ─── WebSocket & audit progress (preserved) ────────────
+    connectWs() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      let wsUrl = `${proto}://${location.host}/ws/scan/${this.jobId}`;
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        wsUrl += `?token=${encodeURIComponent(token)}`;
+      }
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        this.progressLog.push(msg);
+        this.handleProgress(msg);
+      };
+
+      this.ws.onclose = () => {
+        if (!this.result && this.jobId) {
+          setTimeout(() => this.pollStatus(), 1000);
+        }
+      };
+
+      this.ws.onerror = () => {
+        setTimeout(() => this.pollStatus(), 1000);
+      };
+    },
+
+    handleProgress(msg) {
+      switch (msg.type) {
+        case 'phase':
+          this.currentPhaseLabel = msg.label;
+          const phases = { fetching: 10, checking: 40, files: 70, scoring: 90 };
+          this.progressPct = phases[msg.phase] || this.progressPct;
+          break;
+        case 'item_found':
+          break;
+        case 'item_checked':
+          if (msg.total > 0) {
+            this.progressPct = 40 + (msg.checked / msg.total) * 30;
+          }
+          break;
+        case 'file_checked':
+          break;
+        case 'complete':
+          this.progressPct = 100;
+          this.currentPhaseLabel = `Complete — Score: ${msg.score?.toFixed(1)}%`;
+          this.loadScans();
+          break;
+        case 'error':
+          this.currentPhaseLabel = 'Error: ' + msg.message;
+          break;
+      }
+    },
+
+    async pollStatus() {
+      if (!this.jobId) return;
+      try {
+        const resp = await fetchWithAuth(`/api/scans/${this.jobId}`);
+        const data = await resp.json();
+        if (data.status === 'complete' && data.result) {
+          this.result = data.result;
+          this.progressPct = 100;
+          this.loadScans();
+        } else if (data.status === 'failed') {
+          this.currentPhaseLabel = 'Failed: ' + (data.error || 'Unknown error');
+        } else if (data.status === 'running') {
+          setTimeout(() => this.pollStatus(), 2000);
+        }
+      } catch (e) {
+        setTimeout(() => this.pollStatus(), 3000);
+      }
+    },
+
+    // ─── Fix helpers (preserved) ───────────────────────────
     async applyFixes() {
       this.fixing = true;
       this.fixResult = null;
@@ -512,7 +478,6 @@ function auditApp() {
           }),
         });
         this.fixResult = await resp.json();
-        await this.loadResult();
       } catch (e) {
         this.fixResult = { fixed_count: 0, errors: ['Request failed: ' + e.message] };
       } finally {
@@ -520,7 +485,7 @@ function auditApp() {
       }
     },
 
-    // ─── AI Suggestion ─────────────────────────────────────
+    // ─── AI Suggestion (preserved) ─────────────────────────
     async getAISuggestion(issueIdx) {
       const issues = this.allIssues();
       if (issueIdx >= issues.length) return;
@@ -545,7 +510,7 @@ function auditApp() {
       }
     },
 
-    // ─── Step 3: Log formatting ──────────────────────────────
+    // ─── Log formatting ────────────────────────────────────
     formatLogEntry(entry) {
       switch (entry.type) {
         case 'phase': return entry.label;
@@ -558,24 +523,10 @@ function auditApp() {
       }
     },
 
-    // ─── Reset ───────────────────────────────────────────────
-    resetAll() {
-      this.step = 2;
-      this.selectedCourse = null;
-      this.jobId = null;
-      this.progressLog = [];
-      this.progressPct = 0;
-      this.currentPhaseLabel = '';
-      this.result = null;
-      this.fixResult = null;
-      this.selectedFixes = [];
-      this.courseMeta = null;
-      this.aiSuggestions = {};
-      this.showAdmin = false;
-      if (this.ws) {
-        this.ws.close();
-        this.ws = null;
-      }
+    // ─── Helpers ───────────────────────────────────────────
+    formatDate(d) {
+      if (!d) return '—';
+      return new Date(d).toLocaleString();
     },
   };
 }
