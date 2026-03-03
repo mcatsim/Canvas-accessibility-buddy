@@ -1,22 +1,32 @@
 """Course listing routes."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from accessiflow.auth.backend import AuthUser
+from accessiflow.auth.dependencies import get_current_user
+from accessiflow.audit_log.logger import AuditLogger, get_audit_logger
+from accessiflow.audit_log.schemas import AuditAction
 from accessiflow.canvas.client import CanvasClient, CanvasAPIError
-from accessiflow.web.session import get_or_create_default_session
+from accessiflow.web.session import get_user_session, resolve_canvas_token
 from accessiflow.web.models import CourseInfo
 
 router = APIRouter()
 
 
 @router.get("/courses")
-async def list_courses() -> list[CourseInfo]:
+async def list_courses(
+    user: AuthUser = Depends(get_current_user),
+    audit: AuditLogger = Depends(get_audit_logger),
+) -> list[CourseInfo]:
     """List the teacher's Canvas courses."""
-    session = get_or_create_default_session()
-    if not session.validated:
+    session = get_user_session(user.id)
+    token = resolve_canvas_token(session)
+    if not session.validated and not token:
         raise HTTPException(status_code=401, detail="Credentials not configured")
 
+    base_url = session.canvas_base_url or "https://canvas.jccc.edu"
+
     try:
-        async with CanvasClient(session.canvas_base_url, session.canvas_api_token) as client:
+        async with CanvasClient(base_url, token or session.canvas_api_token) as client:
             raw = await client.get_courses()
     except CanvasAPIError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
@@ -29,4 +39,6 @@ async def list_courses() -> list[CourseInfo]:
             course_code=c.get("course_code", ""),
             term=c.get("term", {}).get("name", "") if isinstance(c.get("term"), dict) else "",
         ))
+
+    await audit.log(AuditAction.COURSES_LISTED, user=user, detail={"count": len(courses)})
     return courses

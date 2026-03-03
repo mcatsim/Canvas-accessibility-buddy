@@ -1,7 +1,9 @@
 """Application configuration via environment variables and .env file."""
 from __future__ import annotations
 
+import secrets
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +25,39 @@ class Settings(BaseSettings):
     ai_provider: str = ""
     ai_api_key: str = ""
     ai_model: str = ""
+
+    # ── Auth ────────────────────────────────────────────────────
+    auth_mode: str = "none"  # none | local | sso
+    secret_key: str = ""  # JWT signing; auto-generated if blank
+    database_url: str = "sqlite+aiosqlite:///data/accessiflow.db"
+
+    # Default admin (seeded on first boot when auth_mode != none)
+    admin_email: str = "admin@localhost"
+    admin_password: str = ""
+
+    # Shared Canvas token (used when no per-user token)
+    shared_canvas_token: str = ""
+
+    # ── SSO (only when auth_mode=sso) ───────────────────────────
+    sso_protocol: str = "oidc"  # oidc | saml
+    sso_oidc_discovery_url: str = ""
+    sso_oidc_client_id: str = ""
+    sso_oidc_client_secret: str = ""
+    sso_saml_metadata_url: str = ""
+    sso_saml_entity_id: str = ""
+    sso_default_role: str = "auditor"
+    sso_auto_create_users: bool = True
+
+    @property
+    def effective_secret_key(self) -> str:
+        """Return secret_key, generating a random one for auth_mode=none."""
+        if self.secret_key:
+            return self.secret_key
+        if self.auth_mode == "none":
+            return secrets.token_urlsafe(32)
+        raise ValueError(
+            "ACCESSIFLOW_SECRET_KEY is required when auth_mode is not 'none'"
+        )
 
 
 def get_settings(**overrides) -> Settings:

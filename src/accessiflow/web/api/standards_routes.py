@@ -1,18 +1,12 @@
-"""Standards management API endpoints.
-
-Provides REST endpoints for:
-- Viewing current standards data and versions
-- Checking for updates (WCAG 2.2, etc.)
-- Applying updates to local cache
-- Adding custom criteria and mappings
-"""
-
+"""Standards management API endpoints."""
 from __future__ import annotations
 
-from pathlib import Path
+from fastapi import APIRouter, Depends
 
-from fastapi import APIRouter
-
+from accessiflow.auth.backend import AuthUser
+from accessiflow.auth.dependencies import get_current_user, require_role
+from accessiflow.audit_log.logger import AuditLogger, get_audit_logger
+from accessiflow.audit_log.schemas import AuditAction
 from accessiflow.standards.updater import (
     add_custom_criterion,
     add_custom_mapping,
@@ -21,20 +15,19 @@ from accessiflow.standards.updater import (
     get_effective_standards,
     load_versions,
     reset_cache,
-    DEFAULT_CACHE_DIR,
 )
 
 router = APIRouter(tags=["standards"])
 
 
 @router.get("/standards")
-async def get_standards():
+async def get_standards(user: AuthUser = Depends(get_current_user)):
     """Get the effective (merged) standards data with stats."""
     return get_effective_standards()
 
 
 @router.get("/standards/versions")
-async def get_versions():
+async def get_versions(user: AuthUser = Depends(get_current_user)):
     """Get version tracking info for all standards sets."""
     versions = load_versions()
     if not versions:
@@ -55,15 +48,8 @@ async def get_versions():
 
 
 @router.post("/standards/check")
-async def check_standards_updates():
-    """Self-check: compare local standards data against latest available.
-
-    Checks for:
-    - Missing WCAG 2.1 criteria (data integrity)
-    - New WCAG 2.2 Level A/AA criteria not yet in cache
-    - Section 508 provision completeness
-    - W3C site reachability
-    """
+async def check_standards_updates(user: AuthUser = Depends(get_current_user)):
+    """Self-check: compare local standards data against latest available."""
     result = await check_for_updates()
     return {
         "checked_at": result.checked_at,
@@ -83,14 +69,15 @@ async def check_standards_updates():
 
 
 @router.post("/standards/update")
-async def apply_standards_updates(include_wcag22: bool = True):
-    """Download and merge available standards updates.
-
-    Args:
-        include_wcag22: Whether to include WCAG 2.2 new A/AA criteria (default: True)
-    """
+async def apply_standards_updates(
+    include_wcag22: bool = True,
+    user: AuthUser = Depends(require_role("admin")),
+    audit: AuditLogger = Depends(get_audit_logger),
+):
+    """Download and merge available standards updates. Admin only."""
     cache = await apply_updates(include_wcag22=include_wcag22)
     stats = get_effective_standards().get("stats", {})
+    await audit.log(AuditAction.STANDARDS_UPDATED, user=user, detail={"stats": stats})
     return {
         "ok": True,
         "message": "Standards updated successfully.",
@@ -99,10 +86,14 @@ async def apply_standards_updates(include_wcag22: bool = True):
 
 
 @router.post("/standards/reset")
-async def reset_standards_cache():
-    """Reset standards cache to built-in defaults (WCAG 2.1 + Section 508)."""
+async def reset_standards_cache(
+    user: AuthUser = Depends(require_role("admin")),
+    audit: AuditLogger = Depends(get_audit_logger),
+):
+    """Reset standards cache to built-in defaults. Admin only."""
     reset_cache()
     stats = get_effective_standards().get("stats", {})
+    await audit.log(AuditAction.STANDARDS_RESET, user=user, detail={"stats": stats})
     return {
         "ok": True,
         "message": "Standards cache reset to built-in defaults.",
@@ -118,11 +109,9 @@ async def add_criterion(
     principle: str,
     url: str = "",
     description: str = "",
+    user: AuthUser = Depends(require_role("admin")),
 ):
-    """Add a custom criterion to the local standards cache.
-
-    Useful for organization-specific requirements or tracking newer drafts.
-    """
+    """Add a custom criterion to the local standards cache. Admin only."""
     add_custom_criterion(
         criterion_id=criterion_id,
         name=name,
@@ -143,8 +132,9 @@ async def add_mapping(
     wcag_criteria: list[str],
     section_508_provisions: list[str] | None = None,
     best_practice_urls: list[str] | None = None,
+    user: AuthUser = Depends(require_role("admin")),
 ):
-    """Add or extend a check-to-standards mapping."""
+    """Add or extend a check-to-standards mapping. Admin only."""
     add_custom_mapping(
         check_id=check_id,
         wcag_criteria=wcag_criteria,

@@ -1,20 +1,39 @@
 """WebSocket endpoint for real-time audit progress."""
 import asyncio
-import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from accessiflow.web.session import get_or_create_default_session, get_job
+from accessiflow.auth.jwt import decode_access_token
+from accessiflow.config import get_settings
+from accessiflow.web.session import get_user_session, get_job
 
 router = APIRouter()
 
 
 @router.websocket("/ws/audit/{job_id}")
-async def audit_ws(websocket: WebSocket, job_id: str):
-    """Stream audit progress messages over WebSocket."""
+async def audit_ws(websocket: WebSocket, job_id: str, token: str | None = None):
+    """Stream audit progress messages over WebSocket.
+
+    For auth_mode != none, pass ?token=<jwt> as query param.
+    """
     await websocket.accept()
 
-    session = get_or_create_default_session()
+    settings = get_settings()
+    user_id = "anonymous"
+
+    if settings.auth_mode != "none":
+        if not token:
+            await websocket.send_json({"type": "error", "message": "Authentication required"})
+            await websocket.close(code=4001)
+            return
+        payload = decode_access_token(token)
+        if payload is None:
+            await websocket.send_json({"type": "error", "message": "Invalid token"})
+            await websocket.close(code=4001)
+            return
+        user_id = payload["sub"]
+
+    session = get_user_session(user_id)
     job = get_job(session, job_id)
 
     if not job:
@@ -25,13 +44,11 @@ async def audit_ws(websocket: WebSocket, job_id: str):
     last_idx = 0
     try:
         while True:
-            # Send any new progress messages
             if last_idx < len(job.progress):
                 for msg in job.progress[last_idx:]:
                     await websocket.send_json(msg)
                 last_idx = len(job.progress)
 
-            # If job is done, send final status and close
             if job.status in ("complete", "failed"):
                 break
 

@@ -5,10 +5,42 @@ services:
       - "8080:8080"
     volumes:
       - ./output:/app/output
+      - accessiflow-data:/app/data
     environment:
       - ACCESSIFLOW_CANVAS_BASE_URL=${ACCESSIFLOW_CANVAS_BASE_URL:-https://canvas.yourschool.edu}
       - ACCESSIFLOW_CANVAS_API_TOKEN=${ACCESSIFLOW_CANVAS_API_TOKEN:-}
+      - ACCESSIFLOW_SHARED_CANVAS_TOKEN=${ACCESSIFLOW_SHARED_CANVAS_TOKEN:-}
       - ACCESSIFLOW_AI_PROVIDER=${ACCESSIFLOW_AI_PROVIDER:-}
       - ACCESSIFLOW_AI_API_KEY=${ACCESSIFLOW_AI_API_KEY:-}
       - ACCESSIFLOW_AI_MODEL=${ACCESSIFLOW_AI_MODEL:-}
+      # Auth
+      - ACCESSIFLOW_AUTH_MODE=${ACCESSIFLOW_AUTH_MODE:-none}
+      - ACCESSIFLOW_SECRET_KEY=${ACCESSIFLOW_SECRET_KEY:-}
+      - ACCESSIFLOW_DATABASE_URL=${ACCESSIFLOW_DATABASE_URL:-sqlite+aiosqlite:///data/accessiflow.db}
+      - ACCESSIFLOW_ADMIN_EMAIL=${ACCESSIFLOW_ADMIN_EMAIL:-admin@localhost}
+      - ACCESSIFLOW_ADMIN_PASSWORD=${ACCESSIFLOW_ADMIN_PASSWORD:-}
+      # SSO
+      - ACCESSIFLOW_SSO_PROTOCOL=${ACCESSIFLOW_SSO_PROTOCOL:-oidc}
+      - ACCESSIFLOW_SSO_OIDC_DISCOVERY_URL=${ACCESSIFLOW_SSO_OIDC_DISCOVERY_URL:-}
+      - ACCESSIFLOW_SSO_OIDC_CLIENT_ID=${ACCESSIFLOW_SSO_OIDC_CLIENT_ID:-}
+      - ACCESSIFLOW_SSO_OIDC_CLIENT_SECRET=${ACCESSIFLOW_SSO_OIDC_CLIENT_SECRET:-}
+      - ACCESSIFLOW_SSO_SAML_METADATA_URL=${ACCESSIFLOW_SSO_SAML_METADATA_URL:-}
+      - ACCESSIFLOW_SSO_SAML_ENTITY_ID=${ACCESSIFLOW_SSO_SAML_ENTITY_ID:-}
+      - ACCESSIFLOW_SSO_DEFAULT_ROLE=${ACCESSIFLOW_SSO_DEFAULT_ROLE:-auditor}
+      - ACCESSIFLOW_SSO_AUTO_CREATE_USERS=${ACCESSIFLOW_SSO_AUTO_CREATE_USERS:-true}
     restart: unless-stopped
+
+  # Optional: PostgreSQL for production
+  # Uncomment and set ACCESSIFLOW_DATABASE_URL=postgresql+asyncpg://accessiflow:secret@postgres/accessiflow
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_DB: accessiflow
+  #     POSTGRES_USER: accessiflow
+  #     POSTGRES_PASSWORD: secret
+  #   volumes:
+  #     - pg-data:/var/lib/postgresql/data
+
+volumes:
+  accessiflow-data:
+  # pg-data:

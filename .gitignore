@@ -14,3 +14,15 @@ output/
 .coverage
 htmlcov/
 .mypy_cache/
+data/
+*.db
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

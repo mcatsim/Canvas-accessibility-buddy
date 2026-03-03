@@ -1,26 +1,35 @@
 """Configuration and credential validation routes."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from accessiflow.auth.backend import AuthUser
+from accessiflow.auth.dependencies import get_current_user
+from accessiflow.audit_log.logger import AuditLogger, get_audit_logger
+from accessiflow.audit_log.schemas import AuditAction
 from accessiflow.canvas.client import CanvasClient, CanvasAPIError
-from accessiflow.web.session import get_or_create_default_session
+from accessiflow.web.session import get_user_session, resolve_canvas_token
 from accessiflow.web.models import ConfigRequest, ConfigStatus
 
 router = APIRouter()
 
 
 @router.post("/config")
-async def set_config(req: ConfigRequest) -> dict:
+async def set_config(
+    req: ConfigRequest,
+    user: AuthUser = Depends(get_current_user),
+    audit: AuditLogger = Depends(get_audit_logger),
+) -> dict:
     """Validate credentials by calling Canvas /users/self."""
-    session = get_or_create_default_session()
+    session = get_user_session(user.id)
 
-    # Validate Canvas credentials
     try:
         async with CanvasClient(req.canvas_base_url, req.canvas_api_token) as client:
-            user = await client.get("users/self")
-            user_name = user.get("name", user.get("short_name", "Unknown"))
+            canvas_user = await client.get("users/self")
+            user_name = canvas_user.get("name", canvas_user.get("short_name", "Unknown"))
     except CanvasAPIError as e:
+        await audit.log(AuditAction.CONFIG_VALIDATED, user=user, status="failure", detail={"error": str(e)})
         return {"ok": False, "error": f"Canvas API error {e.status_code}: {e.message}"}
     except Exception as e:
+        await audit.log(AuditAction.CONFIG_VALIDATED, user=user, status="failure", detail={"error": str(e)})
         return {"ok": False, "error": f"Connection failed: {e}"}
 
     session.canvas_base_url = req.canvas_base_url
@@ -28,13 +37,16 @@ async def set_config(req: ConfigRequest) -> dict:
     session.user_name = user_name
     session.validated = True
 
+    await audit.log(AuditAction.CONFIG_VALIDATED, user=user, detail={"canvas_url": req.canvas_base_url})
     return {"ok": True, "user_name": user_name}
 
 
 @router.get("/config/status")
-async def config_status() -> ConfigStatus:
+async def config_status(
+    user: AuthUser = Depends(get_current_user),
+) -> ConfigStatus:
     """Check if session has valid credentials."""
-    session = get_or_create_default_session()
+    session = get_user_session(user.id)
     return ConfigStatus(
         validated=session.validated,
         user_name=session.user_name,

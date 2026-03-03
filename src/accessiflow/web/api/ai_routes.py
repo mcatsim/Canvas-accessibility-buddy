@@ -1,11 +1,15 @@
 """AI configuration and suggestion API routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from accessiflow.auth.backend import AuthUser
+from accessiflow.auth.dependencies import get_current_user
+from accessiflow.audit_log.logger import AuditLogger, get_audit_logger
+from accessiflow.audit_log.schemas import AuditAction
 from accessiflow.ai.registry import get_provider, available_providers
 from accessiflow.remediation.ai_remediator import AIRemediator
-from accessiflow.web.session import get_or_create_default_session, get_job
+from accessiflow.web.session import get_user_session, get_job
 from accessiflow.web.models import (
     AIConfigRequest, AIConfigStatus,
     AISuggestionRequest, AISuggestionResponse,
@@ -15,8 +19,12 @@ router = APIRouter()
 
 
 @router.post("/ai/config")
-async def configure_ai(req: AIConfigRequest):
-    session = get_or_create_default_session()
+async def configure_ai(
+    req: AIConfigRequest,
+    user: AuthUser = Depends(get_current_user),
+    audit: AuditLogger = Depends(get_audit_logger),
+):
+    session = get_user_session(user.id)
     try:
         provider = get_provider(req.provider, req.api_key, req.model or None)
     except ValueError as e:
@@ -30,12 +38,16 @@ async def configure_ai(req: AIConfigRequest):
     session.ai_api_key = req.api_key
     session.ai_model = req.model or provider.model
     session.ai_validated = True
+
+    await audit.log(AuditAction.AI_CONFIG_CHANGED, user=user, detail={"provider": req.provider})
     return {"ok": True, "provider": req.provider, "model": session.ai_model}
 
 
 @router.get("/ai/config/status")
-async def ai_config_status():
-    session = get_or_create_default_session()
+async def ai_config_status(
+    user: AuthUser = Depends(get_current_user),
+):
+    session = get_user_session(user.id)
     return AIConfigStatus(
         configured=bool(session.ai_provider and session.ai_api_key),
         provider=session.ai_provider,
@@ -50,8 +62,13 @@ async def list_providers():
 
 
 @router.post("/ai/suggest/{job_id}")
-async def suggest_fix(job_id: str, req: AISuggestionRequest):
-    session = get_or_create_default_session()
+async def suggest_fix(
+    job_id: str,
+    req: AISuggestionRequest,
+    user: AuthUser = Depends(get_current_user),
+    audit: AuditLogger = Depends(get_audit_logger),
+):
+    session = get_user_session(user.id)
     if not session.ai_validated:
         raise HTTPException(status_code=400, detail="AI provider not configured")
 
@@ -76,6 +93,14 @@ async def suggest_fix(job_id: str, req: AISuggestionRequest):
         provider = get_provider(session.ai_provider, session.ai_api_key, session.ai_model)
         remediator = AIRemediator(provider)
         suggestion = await remediator.explain_issue(issue)
+
+        await audit.log(
+            AuditAction.AI_SUGGESTION,
+            user=user,
+            resource_type="issue",
+            resource_id=issue.check_id,
+        )
+
         return AISuggestionResponse(
             check_id=suggestion.issue_check_id,
             explanation=suggestion.explanation,
@@ -88,8 +113,11 @@ async def suggest_fix(job_id: str, req: AISuggestionRequest):
 
 
 @router.post("/ai/suggest-batch/{job_id}")
-async def suggest_batch(job_id: str):
-    session = get_or_create_default_session()
+async def suggest_batch(
+    job_id: str,
+    user: AuthUser = Depends(get_current_user),
+):
+    session = get_user_session(user.id)
     if not session.ai_validated:
         raise HTTPException(status_code=400, detail="AI provider not configured")
 
