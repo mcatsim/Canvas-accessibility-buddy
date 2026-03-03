@@ -67,6 +67,9 @@ app.add_middleware(
 from a11yscope.auth.middleware import RequestIDMiddleware  # noqa: E402
 app.add_middleware(RequestIDMiddleware)
 
+from a11yscope.web.middleware.security_headers import SecurityHeadersMiddleware  # noqa: E402
+app.add_middleware(SecurityHeadersMiddleware)
+
 # API routes
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(admin_router, prefix="/api/admin")
